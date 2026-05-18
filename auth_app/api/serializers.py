@@ -1,5 +1,8 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+
 from auth_app.models import User
+from django.contrib.auth import authenticate
 
 class RegistrationSerializer(serializers.ModelSerializer):
     repeated_password = serializers.CharField(write_only=True)
@@ -20,3 +23,26 @@ class RegistrationSerializer(serializers.ModelSerializer):
         validated_data.pop('repeated_password')
         user = User.objects.create_user(fullname=validated_data['fullname'], email=validated_data['email'], password=validated_data['password'])
         return user
+
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        email = attrs.get('email')
+        password = attrs.get('password')
+
+        user = authenticate(username=email, password=password)
+        if user is None:
+            raise serializers.ValidationError('Ungültige Anmeldedaten.')
+
+        attrs['user'] = user
+        return attrs
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'fullname']
+
