@@ -1,4 +1,8 @@
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.generics import (
+    ListCreateAPIView,
+    RetrieveUpdateDestroyAPIView,
+    CreateAPIView,
+)
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 
@@ -7,8 +11,13 @@ from kanban_app.api.serializers import (
     BoardSerializer,
     BoardDetailSerializer,
     BoardUpdateSerializer,
+    TaskCreateSerializer,
 )
-from kanban_app.api.permissions import IsBoardOwnerOrMember, IsBoardOwner
+from kanban_app.api.permissions import (
+    IsBoardOwnerOrMember,
+    IsBoardOwner,
+    CanCreateTaskOnBoard,
+)
 
 
 class BoardListCreateView(ListCreateAPIView):
@@ -38,3 +47,11 @@ class BoardDetailView(RetrieveUpdateDestroyAPIView):
         if self.request.method == 'DELETE':
             return [IsAuthenticated(), IsBoardOwner()]
         return [IsAuthenticated(), IsBoardOwnerOrMember()]
+
+
+class TaskCreateView(CreateAPIView):
+    serializer_class = TaskCreateSerializer
+    permission_classes = [IsAuthenticated, CanCreateTaskOnBoard]
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)

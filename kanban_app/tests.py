@@ -180,3 +180,123 @@ class BoardDetailTests(APITestCase):
         self.assertFalse(Board.objects.filter(pk=board_id).exists())
         self.assertFalse(Task.objects.filter(pk=task_id).exists())
         self.assertFalse(Comment.objects.filter(pk=comment_id).exists())
+
+class TaskCreateTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='test@yasef.de',
+            fullname='Yasef',
+            password='geheim123',
+        )
+        self.member = User.objects.create_user(
+            email='member@yasef.de',
+            fullname='Member',
+            password='geheim123',
+        )
+        self.outsider = User.objects.create_user(
+            email='outsider@yasef.de',
+            fullname='Outsider',
+            password='geheim123',
+        )
+        self.token_yasef = Token.objects.create(user=self.yasef)
+
+        self.board = Board.objects.create(title='Test Board', owner=self.yasef)
+        self.board.members.add(self.member)
+
+        self.board_stranger = Board.objects.create(
+            title='Stranger Board',
+            owner=self.outsider,
+        )
+
+        self.url = '/api/tasks/'
+
+    def _auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+
+    def _valid_payload(self, **overrides):
+        payload = {
+            'board': self.board.id,
+            'title': 'Test Task',
+            'description': 'A test',
+            'status': 'to-do',
+            'priority': 'medium',
+            'due_date': '2026-12-31',
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_create_returns_401_when_no_token(self):
+        response = self.client.post(self.url, self._valid_payload(), format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_create_returns_404_when_board_does_not_exist(self):
+        self._auth()
+        response = self.client.post(
+            self.url,
+            self._valid_payload(board=99999),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_create_returns_403_when_user_is_stranger(self):
+        self._auth()
+        response = self.client.post(
+            self.url,
+            self._valid_payload(board=self.board_stranger.id),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_returns_400_when_title_missing(self):
+        self._auth()
+        payload = self._valid_payload()
+        del payload['title']
+        response = self.client.post(self.url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_returns_400_when_assignee_is_not_board_member(self):
+        self._auth()
+        response = self.client.post(
+            self.url,
+            self._valid_payload(assignee_id=self.outsider.id),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('assignee_id', response.data)
+
+    def test_create_returns_400_when_reviewer_is_not_board_member(self):
+        self._auth()
+        response = self.client.post(
+            self.url,
+            self._valid_payload(reviewer_id=self.outsider.id),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('reviewer_id', response.data)
+
+    def test_create_returns_201_with_nested_response_when_owner(self):
+        self._auth()
+        payload = self._valid_payload(
+            assignee_id=self.member.id,
+            reviewer_id=self.yasef.id,
+        )
+        response = self.client.post(self.url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['title'], 'Test Task')
+        self.assertEqual(response.data['assignee']['id'], self.member.id)
+        self.assertEqual(response.data['reviewer']['id'], self.yasef.id)
+        self.assertEqual(response.data['comments_count'], 0)
+        self.assertNotIn('assignee_id', response.data)
+
+    def test_create_sets_creator_to_request_user(self):
+        self._auth()
+        response = self.client.post(self.url, self._valid_payload(), format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        task = Task.objects.get(pk=response.data['id'])
+        self.assertEqual(task.creator, self.yasef)
+
+    def test_create_returns_201_when_user_is_board_member(self):
+        token_member = Token.objects.create(user=self.member)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token_member.key}')
+        response = self.client.post(self.url, self._valid_payload(), format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
