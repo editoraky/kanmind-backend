@@ -4,7 +4,7 @@ from rest_framework.authtoken.models import Token
 
 from django.contrib.auth import get_user_model
 
-from kanban_app.models import Board
+from kanban_app.models import Board, Task, Comment
 
 User = get_user_model()
 
@@ -134,3 +134,49 @@ class BoardDetailTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.board_member.refresh_from_db()
         self.assertEqual(self.board_member.title, original_title)
+
+    def test_delete_returns_401_when_no_token(self):
+        url = f'/api/boards/{self.board_owner.id}/'
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_delete_returns_404_when_board_does_not_exist(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = '/api/boards/99999/'
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_returns_403_when_user_is_stranger(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = f'/api/boards/{self.board_stranger.id}/'
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_delete_returns_403_when_user_is_member(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = f'/api/boards/{self.board_member.id}/'
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_delete_returns_204_and_cascades_when_user_is_owner(self):
+        task = Task.objects.create(
+            board=self.board_owner,
+            title='Cascade Test Task',
+            creator=self.yasef,
+        )
+        comment = Comment.objects.create(
+            task=task,
+            author=self.yasef,
+            content='Cascade Test Comment',
+        )
+        board_id = self.board_owner.id
+        task_id = task.id
+        comment_id = comment.id
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        response = self.client.delete(f'/api/boards/{board_id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Board.objects.filter(pk=board_id).exists())
+        self.assertFalse(Task.objects.filter(pk=task_id).exists())
+        self.assertFalse(Comment.objects.filter(pk=comment_id).exists())

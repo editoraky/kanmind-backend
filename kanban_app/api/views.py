@@ -1,4 +1,4 @@
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 
@@ -8,7 +8,7 @@ from kanban_app.api.serializers import (
     BoardDetailSerializer,
     BoardUpdateSerializer,
 )
-from kanban_app.api.permissions import IsBoardOwnerOrMember
+from kanban_app.api.permissions import IsBoardOwnerOrMember, IsBoardOwner
 
 
 class BoardListCreateView(ListCreateAPIView):
@@ -25,12 +25,16 @@ class BoardListCreateView(ListCreateAPIView):
         serializer.save(owner=self.request.user)
 
 
-class BoardDetailView(RetrieveUpdateAPIView):
-    http_method_names = ['get', 'patch', 'head', 'options']
+class BoardDetailView(RetrieveUpdateDestroyAPIView):
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']
     queryset = Board.objects.all()
-    permission_classes = [IsAuthenticated, IsBoardOwnerOrMember]
 
     def get_serializer_class(self):
         if self.request.method == 'PATCH':
             return BoardUpdateSerializer
         return BoardDetailSerializer
+
+    def get_permissions(self):
+        if self.request.method == 'DELETE':
+            return [IsAuthenticated(), IsBoardOwner()]
+        return [IsAuthenticated(), IsBoardOwnerOrMember()]
