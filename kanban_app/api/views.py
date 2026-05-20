@@ -1,9 +1,10 @@
-from rest_framework.generics import ListCreateAPIView
+from rest_framework.generics import ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 
 from kanban_app.models import Board
-from kanban_app.api.serializers import BoardSerializer
+from kanban_app.api.serializers import BoardSerializer, BoardDetailSerializer
+from kanban_app.api.permissions import IsBoardOwnerOrMember
 
 
 class BoardListCreateView(ListCreateAPIView):
@@ -18,5 +19,11 @@ class BoardListCreateView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+
+class BoardDetailView(RetrieveAPIView):
+    queryset = Board.objects.all()
+    serializer_class = BoardDetailSerializer
+    permission_classes = [IsAuthenticated, IsBoardOwnerOrMember]
 
 
