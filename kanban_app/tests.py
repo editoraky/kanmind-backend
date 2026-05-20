@@ -79,3 +79,58 @@ class BoardDetailTests(APITestCase):
         url = f'/api/boards/{self.board_stranger.id}/'
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_patch_returns_401_when_no_token(self):
+        url = f'/api/boards/{self.board_owner.id}/'
+        response = self.client.patch(url, {'title': 'Egal'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_patch_returns_404_when_board_does_not_exist(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = '/api/boards/99999/'
+        response = self.client.patch(url, {'title': 'Egal'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_patch_returns_403_when_user_is_stranger(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = f'/api/boards/{self.board_stranger.id}/'
+        response = self.client.patch(url, {'title': 'Egal'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_patch_returns_200_and_updates_title_when_user_is_owner(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = f'/api/boards/{self.board_owner.id}/'
+
+        response = self.client.patch(url, {'title': 'Neuer Titel'}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], self.board_owner.id)
+        self.assertEqual(response.data['title'], 'Neuer Titel')
+        self.assertEqual(response.data['owner_data']['id'], self.yasef.id)
+        self.assertEqual(response.data['owner_data']['email'], 'test@yasef.de')
+        self.assertEqual(response.data['members_data'], [])
+
+        self.board_owner.refresh_from_db()
+        self.assertEqual(self.board_owner.title, 'Neuer Titel')
+
+    def test_patch_returns_200_when_user_is_member(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = f'/api/boards/{self.board_member.id}/'
+        response = self.client.patch(url, {'title': 'Member Update'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['title'], 'Member Update')
+
+    def test_patch_does_not_change_unspecified_fields(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token_yasef.key}')
+        url = f'/api/boards/{self.board_member.id}/'
+        original_title = self.board_member.title
+
+        response = self.client.patch(
+            url,
+            {'members': [self.user2.id]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.board_member.refresh_from_db()
+        self.assertEqual(self.board_member.title, original_title)
