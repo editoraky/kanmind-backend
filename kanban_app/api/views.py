@@ -1,4 +1,5 @@
 from rest_framework.generics import (
+    ListAPIView,
     ListCreateAPIView,
     RetrieveUpdateDestroyAPIView,
     CreateAPIView,
@@ -13,6 +14,7 @@ from kanban_app.api.serializers import (
     BoardUpdateSerializer,
     TaskCreateSerializer,
     TaskUpdateSerializer,
+    TaskListSerializer,
 )
 from kanban_app.api.permissions import (
     IsBoardOwnerOrMember,
@@ -68,3 +70,17 @@ class TaskDetailView(RetrieveUpdateDestroyAPIView):
         if self.request.method == 'DELETE':
             return [IsAuthenticated(), IsTaskCreatorOrBoardOwner()]
         return [IsAuthenticated(), IsTaskBoardMember()]
+
+class AssignedTasksView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TaskListSerializer
+
+    def get_queryset(self):
+        return Task.objects.filter(assignee=self.request.user)
+
+class ReviewingTasksView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TaskListSerializer
+
+    def get_queryset(self):
+        return Task.objects.filter(reviewer=self.request.user)

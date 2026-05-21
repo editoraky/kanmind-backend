@@ -462,3 +462,131 @@ class TaskDeleteTests(APITestCase):
         response = self._delete(self.task.id)
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Task.objects.filter(pk=self.task.id).exists())
+
+class AssignedTasksTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='yasef@example.com',
+            fullname='Yasef',
+            password='geheim123',
+        )
+        self.other = User.objects.create_user(
+            email='other@example.com',
+            fullname='Other',
+            password='geheim123',
+        )
+        self.token_yasef = Token.objects.create(user=self.yasef)
+        self.token_other = Token.objects.create(user=self.other)
+        self.board = Board.objects.create(title='Board', owner=self.yasef)
+        self.task_assigned = Task.objects.create(
+            board=self.board,
+            creator=self.yasef,
+            assignee=self.yasef,
+            title='Assigned to Yasef',
+            status='to-do',
+            priority='medium',
+        )
+        self.task_reviewing = Task.objects.create(
+            board=self.board,
+            creator=self.yasef,
+            reviewer=self.yasef,
+            title='Reviewing Yasef',
+            status='to-do',
+            priority='medium',
+        )
+        self.task_neither = Task.objects.create(
+            board=self.board,
+            creator=self.yasef,
+            title='Just creator',
+            status='to-do',
+            priority='medium',
+        )
+
+    def _auth(self, token):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def test_returns_401_when_no_token(self):
+        response = self.client.get('/api/tasks/assigned-to-me/')
+        self.assertEqual(response.status_code, 401)
+
+    def test_returns_only_tasks_where_user_is_assignee(self):
+        self._auth(self.token_yasef)
+        response = self.client.get('/api/tasks/assigned-to-me/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], self.task_assigned.id)
+
+    def test_returns_empty_list_when_user_has_no_assigned_tasks(self):
+        self._auth(self.token_other)
+        response = self.client.get('/api/tasks/assigned-to-me/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 0)
+
+    def test_response_contains_board_as_integer(self):
+        self._auth(self.token_yasef)
+        response = self.client.get('/api/tasks/assigned-to-me/')
+        self.assertEqual(response.data[0]['board'], self.board.id)
+
+class ReviewingTasksTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='yasef@example.com',
+            fullname='Yasef',
+            password='geheim123',
+        )
+        self.other = User.objects.create_user(
+            email='other@example.com',
+            fullname='Other',
+            password='geheim123',
+        )
+        self.token_yasef = Token.objects.create(user=self.yasef)
+        self.token_other = Token.objects.create(user=self.other)
+        self.board = Board.objects.create(title='Board', owner=self.yasef)
+        self.task_assigned = Task.objects.create(
+            board=self.board,
+            creator=self.yasef,
+            assignee=self.yasef,
+            title='Assigned to Yasef',
+            status='to-do',
+            priority='medium',
+        )
+        self.task_reviewing = Task.objects.create(
+            board=self.board,
+            creator=self.yasef,
+            reviewer=self.yasef,
+            title='Reviewing Yasef',
+            status='to-do',
+            priority='medium',
+        )
+        self.task_neither = Task.objects.create(
+            board=self.board,
+            creator=self.yasef,
+            title='Just creator',
+            status='to-do',
+            priority='medium',
+        )
+
+    def _auth(self, token):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def test_returns_401_when_no_token(self):
+        response = self.client.get('/api/tasks/reviewing/')
+        self.assertEqual(response.status_code, 401)
+
+    def test_returns_only_tasks_where_user_is_reviewer(self):
+        self._auth(self.token_yasef)
+        response = self.client.get('/api/tasks/reviewing/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['id'], self.task_reviewing.id)
+
+    def test_returns_empty_list_when_user_has_no_reviewing_tasks(self):
+        self._auth(self.token_other)
+        response = self.client.get('/api/tasks/reviewing/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 0)
+
+    def test_response_contains_board_as_integer(self):
+        self._auth(self.token_yasef)
+        response = self.client.get('/api/tasks/reviewing/')
+        self.assertEqual(response.data[0]['board'], self.board.id)

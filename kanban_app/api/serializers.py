@@ -210,3 +210,18 @@ class TaskUpdateSerializer(serializers.ModelSerializer):
     @staticmethod
     def _is_board_participant(user, board):
         return user == board.owner or board.members.filter(pk=user.pk).exists()
+
+class TaskListSerializer(serializers.ModelSerializer):
+    assignee = UserSerializer(read_only=True)
+    reviewer = UserSerializer(read_only=True)
+    comments_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'board', 'title', 'description', 'status', 'priority',
+            'assignee', 'reviewer', 'due_date', 'comments_count',
+        ]
+
+    def get_comments_count(self, obj):
+        return obj.comments.count()
