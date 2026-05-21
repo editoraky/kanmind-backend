@@ -1,17 +1,22 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from rest_framework.validators import UniqueValidator
 
 from auth_app.models import User
 from django.contrib.auth import authenticate
 
+
 class RegistrationSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(
+        validators=[UniqueValidator(queryset=User.objects.all())],
+    )
     repeated_password = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
         fields = ['fullname', 'email', 'password', 'repeated_password']
         extra_kwargs = {
-            'password': {'write_only': True}
+            'password': {'write_only': True},
         }
 
     def validate(self, attrs):
