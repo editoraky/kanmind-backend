@@ -300,3 +300,165 @@ class TaskCreateTests(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {token_member.key}')
         response = self.client.post(self.url, self._valid_payload(), format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+class TaskUpdateTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='yasef@example.com',
+            fullname='Yasef',
+            password='geheim123',
+        )
+        self.member = User.objects.create_user(
+            email='member@example.com',
+            fullname='Member',
+            password='geheim123',
+        )
+        self.outsider = User.objects.create_user(
+            email='outsider@example.com',
+            fullname='Outsider',
+            password='geheim123',
+        )
+        self.token_yasef = Token.objects.create(user=self.yasef)
+        self.token_member = Token.objects.create(user=self.member)
+        self.token_outsider = Token.objects.create(user=self.outsider)
+        self.board = Board.objects.create(title='Board', owner=self.yasef)
+        self.board.members.add(self.member)
+        self.task = Task.objects.create(
+            board=self.board,
+            creator=self.yasef,
+            title='Task',
+            status='to-do',
+            priority='medium',
+        )
+
+    def _auth(self, token):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def _patch(self, task_id, payload):
+        return self.client.patch(f'/api/tasks/{task_id}/', payload, format='json')
+
+    def test_patch_returns_401_when_no_token(self):
+        response = self._patch(self.task.id, {'title': 'Neu'})
+        self.assertEqual(response.status_code, 401)
+
+    def test_patch_returns_404_when_task_does_not_exist(self):
+        self._auth(self.token_yasef)
+        response = self._patch(999999, {'title': 'Neu'})
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_returns_403_when_user_is_stranger(self):
+        self._auth(self.token_outsider)
+        response = self._patch(self.task.id, {'title': 'Neu'})
+        self.assertEqual(response.status_code, 403)
+
+    def test_patch_returns_200_when_user_is_board_owner(self):
+        self._auth(self.token_yasef)
+        response = self._patch(self.task.id, {'title': 'Neu'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['title'], 'Neu')
+
+    def test_patch_returns_200_when_user_is_board_member(self):
+        self._auth(self.token_member)
+        response = self._patch(self.task.id, {'title': 'Neu'})
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_ignores_board_field_when_attempted(self):
+        other_board = Board.objects.create(title='Other', owner=self.yasef)
+        self._auth(self.token_yasef)
+        response = self._patch(
+            self.task.id,
+            {'board': other_board.id, 'title': 'Neu'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.board_id, self.board.id)
+
+    def test_patch_returns_400_when_assignee_is_not_board_participant(self):
+        self._auth(self.token_yasef)
+        response = self._patch(
+            self.task.id,
+            {'assignee_id': self.outsider.id},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('assignee_id', response.data)
+
+    def test_patch_partial_update_keeps_other_fields_unchanged(self):
+        self._auth(self.token_yasef)
+        response = self._patch(self.task.id, {'title': 'Neu'})
+        self.assertEqual(response.status_code, 200)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.title, 'Neu')
+        self.assertEqual(self.task.priority, 'medium')
+
+class TaskDeleteTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='yasef@example.com',
+            fullname='Yasef',
+            password='geheim123',
+        )
+        self.creator = User.objects.create_user(
+            email='creator@example.com',
+            fullname='Creator',
+            password='geheim123',
+        )
+        self.another_member = User.objects.create_user(
+            email='another@example.com',
+            fullname='Another',
+            password='geheim123',
+        )
+        self.outsider = User.objects.create_user(
+            email='outsider@example.com',
+            fullname='Outsider',
+            password='geheim123',
+        )
+        self.token_yasef = Token.objects.create(user=self.yasef)
+        self.token_creator = Token.objects.create(user=self.creator)
+        self.token_another = Token.objects.create(user=self.another_member)
+        self.token_outsider = Token.objects.create(user=self.outsider)
+        self.board = Board.objects.create(title='Board', owner=self.yasef)
+        self.board.members.add(self.creator, self.another_member)
+        self.task = Task.objects.create(
+            board=self.board,
+            creator=self.creator,
+            title='Task',
+            status='to-do',
+            priority='medium',
+        )
+
+    def _auth(self, token):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def _delete(self, task_id):
+        return self.client.delete(f'/api/tasks/{task_id}/')
+
+    def test_delete_returns_401_when_no_token(self):
+        response = self._delete(self.task.id)
+        self.assertEqual(response.status_code, 401)
+
+    def test_delete_returns_404_when_task_does_not_exist(self):
+        self._auth(self.token_yasef)
+        response = self._delete(999999)
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_returns_403_when_user_is_stranger(self):
+        self._auth(self.token_outsider)
+        response = self._delete(self.task.id)
+        self.assertEqual(response.status_code, 403)
+
+    def test_delete_returns_403_when_user_is_member_but_not_creator(self):
+        self._auth(self.token_another)
+        response = self._delete(self.task.id)
+        self.assertEqual(response.status_code, 403)
+
+    def test_delete_returns_204_when_user_is_creator(self):
+        self._auth(self.token_creator)
+        response = self._delete(self.task.id)
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Task.objects.filter(pk=self.task.id).exists())
+
+    def test_delete_returns_204_when_user_is_board_owner(self):
+        self._auth(self.token_yasef)
+        response = self._delete(self.task.id)
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Task.objects.filter(pk=self.task.id).exists())

@@ -158,3 +158,55 @@ class TaskCreateSerializer(serializers.ModelSerializer):
     @staticmethod
     def _is_board_participant(user, board):
         return user == board.owner or board.members.filter(pk=user.pk).exists()
+
+
+class TaskUpdateSerializer(serializers.ModelSerializer):
+    assignee_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='assignee',
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    reviewer_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='reviewer',
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    assignee = UserSerializer(read_only=True)
+    reviewer = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = [
+            'id',
+            'title',
+            'description',
+            'status',
+            'priority',
+            'assignee_id',
+            'reviewer_id',
+            'assignee',
+            'reviewer',
+            'due_date',
+        ]
+
+    def validate(self, attrs):
+        board = self.instance.board
+        assignee = attrs.get('assignee')
+        reviewer = attrs.get('reviewer')
+        if assignee and not self._is_board_participant(assignee, board):
+            raise serializers.ValidationError(
+                {'assignee_id': 'Must be a member or owner of the board'}
+            )
+        if reviewer and not self._is_board_participant(reviewer, board):
+            raise serializers.ValidationError(
+                {'reviewer_id': 'Must be a member or owner of the board'}
+            )
+        return attrs
+
+    @staticmethod
+    def _is_board_participant(user, board):
+        return user == board.owner or board.members.filter(pk=user.pk).exists()

@@ -28,3 +28,15 @@ class CanCreateTaskOnBoard(BasePermission):
             raise NotFound('Board not found.')
         user = request.user
         return user == board.owner or board.members.filter(pk=user.pk).exists()
+
+class IsTaskBoardMember(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        board = obj.board
+        return board.owner == user or board.members.filter(pk=user.pk).exists()
+
+
+class IsTaskCreatorOrBoardOwner(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        return obj.creator == user or obj.board.owner == user
