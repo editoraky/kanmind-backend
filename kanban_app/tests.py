@@ -590,3 +590,239 @@ class ReviewingTasksTests(APITestCase):
         self._auth(self.token_yasef)
         response = self.client.get('/api/tasks/reviewing/')
         self.assertEqual(response.data[0]['board'], self.board.id)
+
+class CommentListTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='yasef@example.com',
+            fullname='Yasef Mustermann',
+            password='secret123',
+        )
+        self.member = User.objects.create_user(
+            email='member@example.com',
+            fullname='Maria Member',
+            password='secret123',
+        )
+        self.stranger = User.objects.create_user(
+            email='stranger@example.com',
+            fullname='Sam Stranger',
+            password='secret123',
+        )
+        self.board = Board.objects.create(title='Board 1', owner=self.yasef)
+        self.board.members.add(self.member)
+        self.task = Task.objects.create(
+            board=self.board,
+            title='Task 1',
+            creator=self.yasef,
+            status='to-do',
+            priority='medium',
+        )
+        self.comment_old = Comment.objects.create(
+            task=self.task,
+            author=self.yasef,
+            content='First comment',
+        )
+        self.comment_new = Comment.objects.create(
+            task=self.task,
+            author=self.member,
+            content='Second comment',
+        )
+        self.url = f'/api/tasks/{self.task.pk}/comments/'
+
+    def _auth(self, user):
+        token, _ = Token.objects.get_or_create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def test_returns_401_when_not_authenticated(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+
+    def test_returns_404_when_task_does_not_exist(self):
+        self._auth(self.yasef)
+        response = self.client.get('/api/tasks/9999/comments/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_returns_403_when_user_is_stranger(self):
+        self._auth(self.stranger)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_returns_200_with_correct_fields_when_owner(self):
+        self._auth(self.yasef)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 2)
+        first = response.data[0]
+        self.assertEqual(
+            set(first.keys()),
+            {'id', 'created_at', 'author', 'content'},
+        )
+        self.assertEqual(first['author'], 'Yasef Mustermann')
+
+    def test_returns_comments_in_chronological_order(self):
+        self._auth(self.yasef)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]['id'], self.comment_old.pk)
+        self.assertEqual(response.data[1]['id'], self.comment_new.pk)
+
+class CommentCreateTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='yasef@example.com',
+            fullname='Yasef Mustermann',
+            password='secret123',
+        )
+        self.member = User.objects.create_user(
+            email='member@example.com',
+            fullname='Maria Member',
+            password='secret123',
+        )
+        self.stranger = User.objects.create_user(
+            email='stranger@example.com',
+            fullname='Sam Stranger',
+            password='secret123',
+        )
+        self.board = Board.objects.create(title='Board 1', owner=self.yasef)
+        self.board.members.add(self.member)
+        self.task = Task.objects.create(
+            board=self.board,
+            title='Task 1',
+            creator=self.yasef,
+            status='to-do',
+            priority='medium',
+        )
+        self.url = f'/api/tasks/{self.task.pk}/comments/'
+
+    def _auth(self, user):
+        token, _ = Token.objects.get_or_create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def _payload(self, **overrides):
+        data = {'content': 'A new comment'}
+        data.update(overrides)
+        return data
+
+    def test_returns_401_when_not_authenticated(self):
+        response = self.client.post(self.url, self._payload(), format='json')
+        self.assertEqual(response.status_code, 401)
+
+    def test_returns_404_when_task_does_not_exist(self):
+        self._auth(self.yasef)
+        response = self.client.post(
+            '/api/tasks/9999/comments/',
+            self._payload(),
+            format='json',
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_returns_403_when_user_is_stranger(self):
+        self._auth(self.stranger)
+        response = self.client.post(self.url, self._payload(), format='json')
+        self.assertEqual(response.status_code, 403)
+
+    def test_returns_400_when_content_is_empty(self):
+        self._auth(self.yasef)
+        response = self.client.post(
+            self.url,
+            self._payload(content=''),
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_returns_201_and_persists_comment_when_owner(self):
+        self._auth(self.yasef)
+        response = self.client.post(self.url, self._payload(), format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Comment.objects.count(), 1)
+        comment = Comment.objects.first()
+        self.assertEqual(comment.author, self.yasef)
+        self.assertEqual(comment.task, self.task)
+        self.assertEqual(comment.content, 'A new comment')
+
+    def test_response_contains_correct_fields(self):
+        self._auth(self.yasef)
+        response = self.client.post(self.url, self._payload(), format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            set(response.data.keys()),
+            {'id', 'created_at', 'author', 'content'},
+        )
+        self.assertEqual(response.data['author'], 'Yasef Mustermann')
+
+class CommentDeleteTests(APITestCase):
+    def setUp(self):
+        self.yasef = User.objects.create_user(
+            email='yasef@example.com',
+            fullname='Yasef Mustermann',
+            password='secret123',
+        )
+        self.member = User.objects.create_user(
+            email='member@example.com',
+            fullname='Maria Member',
+            password='secret123',
+        )
+        self.stranger = User.objects.create_user(
+            email='stranger@example.com',
+            fullname='Sam Stranger',
+            password='secret123',
+        )
+        self.board = Board.objects.create(title='Board 1', owner=self.yasef)
+        self.board.members.add(self.member)
+        self.task_a = Task.objects.create(
+            board=self.board,
+            title='Task A',
+            creator=self.yasef,
+            status='to-do',
+            priority='medium',
+        )
+        self.task_b = Task.objects.create(
+            board=self.board,
+            title='Task B',
+            creator=self.yasef,
+            status='to-do',
+            priority='medium',
+        )
+        self.comment = Comment.objects.create(
+            task=self.task_a,
+            author=self.member,
+            content='Member comment on Task A',
+        )
+        self.url = f'/api/tasks/{self.task_a.pk}/comments/{self.comment.pk}/'
+
+    def _auth(self, user):
+        token, _ = Token.objects.get_or_create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+
+    def test_returns_401_when_not_authenticated(self):
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, 401)
+
+    def test_returns_404_when_task_does_not_exist(self):
+        self._auth(self.member)
+        url = f'/api/tasks/9999/comments/{self.comment.pk}/'
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_returns_404_when_comment_does_not_exist(self):
+        self._auth(self.member)
+        url = f'/api/tasks/{self.task_a.pk}/comments/9999/'
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_returns_404_when_comment_does_not_belong_to_url_task(self):
+        self._auth(self.member)
+        url = f'/api/tasks/{self.task_b.pk}/comments/{self.comment.pk}/'
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_returns_403_when_user_is_not_author(self):
+        self._auth(self.yasef)
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_returns_204_when_user_is_author(self):
+        self._auth(self.member)
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(Comment.objects.count(), 0)

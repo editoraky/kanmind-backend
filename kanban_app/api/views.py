@@ -3,11 +3,12 @@ from rest_framework.generics import (
     ListCreateAPIView,
     RetrieveUpdateDestroyAPIView,
     CreateAPIView,
+    DestroyAPIView,
 )
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
 
-from kanban_app.models import Board, Task
+from kanban_app.models import Board, Task, Comment
 from kanban_app.api.serializers import (
     BoardSerializer,
     BoardDetailSerializer,
@@ -15,6 +16,7 @@ from kanban_app.api.serializers import (
     TaskCreateSerializer,
     TaskUpdateSerializer,
     TaskListSerializer,
+    CommentSerializer,
 )
 from kanban_app.api.permissions import (
     IsBoardOwnerOrMember,
@@ -22,6 +24,8 @@ from kanban_app.api.permissions import (
     CanCreateTaskOnBoard,
     IsTaskBoardMember,
     IsTaskCreatorOrBoardOwner,
+    CanAccessTaskComments,
+    IsCommentAuthor,
 )
 
 
@@ -84,3 +88,23 @@ class ReviewingTasksView(ListAPIView):
 
     def get_queryset(self):
         return Task.objects.filter(reviewer=self.request.user)
+
+class CommentListCreateView(ListCreateAPIView):
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated, CanAccessTaskComments]
+
+    def get_queryset(self):
+        return Comment.objects.filter(task_id=self.kwargs['task_pk'])
+
+    def perform_create(self, serializer):
+        serializer.save(
+            author=self.request.user,
+            task_id=self.kwargs['task_pk'],
+        )
+
+
+class CommentDeleteView(DestroyAPIView):
+    permission_classes = [IsAuthenticated, IsCommentAuthor]
+
+    def get_queryset(self):
+        return Comment.objects.filter(task_id=self.kwargs['task_pk'])

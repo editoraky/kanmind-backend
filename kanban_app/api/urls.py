@@ -7,6 +7,8 @@ from kanban_app.api.views import (
     TaskDetailView,
     AssignedTasksView,
     ReviewingTasksView,
+    CommentListCreateView,
+    CommentDeleteView,
 )
 
 urlpatterns = [
@@ -16,4 +18,6 @@ urlpatterns = [
     path('tasks/assigned-to-me/', AssignedTasksView.as_view()),
     path('tasks/reviewing/', ReviewingTasksView.as_view()),
     path('tasks/<int:pk>/', TaskDetailView.as_view()),
+    path('tasks/<int:task_pk>/comments/', CommentListCreateView.as_view()),
+    path('tasks/<int:task_pk>/comments/<int:pk>/', CommentDeleteView.as_view()),
 ]

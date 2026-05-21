@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
-from kanban_app.models import Board, Task
+from kanban_app.models import Board, Task, Comment
 from auth_app.api.serializers import UserSerializer
 
 User = get_user_model()
@@ -225,3 +225,10 @@ class TaskListSerializer(serializers.ModelSerializer):
 
     def get_comments_count(self, obj):
         return obj.comments.count()
+
+class CommentSerializer(serializers.ModelSerializer):
+    author = serializers.CharField(source='author.fullname', read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'created_at', 'author', 'content']
