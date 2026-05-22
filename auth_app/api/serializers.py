@@ -1,7 +1,6 @@
 """Serializers for user registration, login and lightweight user lookups."""
 
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
 from rest_framework.validators import UniqueValidator
 
 from auth_app.models import User
@@ -28,7 +27,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Ensure the password and its confirmation match before saving."""
         if attrs['password'] != attrs['repeated_password']:
-            raise serializers.ValidationError("Passwörter stimmen nicht überein.")
+            raise serializers.ValidationError("Passwords do not match.")
         return attrs
 
     def create(self, validated_data):
@@ -51,7 +50,7 @@ class LoginSerializer(serializers.Serializer):
 
         user = authenticate(username=email, password=password)
         if user is None:
-            raise serializers.ValidationError('Ungültige Anmeldedaten.')
+            raise serializers.ValidationError('Invalid login credentials.')
 
         attrs['user'] = user
         return attrs

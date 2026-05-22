@@ -65,13 +65,13 @@ class EmailCheckView(APIView):
 
         if not email:
             return Response(
-                {'error': 'Email-Parameter fehlt.'},
+                {'error': 'The email parameter is missing.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         user = User.objects.filter(email=email).first()
         if user is None:
             return Response(
-                {'error': 'Email nicht gefunden.'},
+                {'error': 'Email not found.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
