@@ -1,3 +1,5 @@
+"""Django admin registration for the Kanban models."""
+
 from django.contrib import admin
 from .models import Board, Task, Comment
 
